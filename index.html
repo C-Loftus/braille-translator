@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Braille Converter</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #5b5f66;
+      color: #e6eef6;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: #161b22;
+      border-radius: 10px;
+      padding: 1.5rem;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      margin-bottom: .5rem;
+    }
+    p {
+      color: #9aa6b2;
+      font-size: 0.9rem;
+    }
+    input, textarea {
+      width: 95%;
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #0d1117;
+      color: #fff;
+      font-size: 1rem;
+      margin-top: 1rem;
+    }
+    textarea {
+      resize: none;
+      height: 3rem;
+    }
+    .output {
+      margin-top: 1.5rem;
+      background: #0d1117;
+      border-radius: 10px;
+      padding: 1rem;
+      word-wrap: break-word;
+      transition: all 0.2s ease;
+    }
+    .braille-line {
+      font-size: 2.5rem;
+      letter-spacing: .5rem;
+      margin-bottom: 0.5rem;
+    }
+    .details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .token {
+      background: #1c2128;
+      border-radius: 8px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.9rem;
+      line-height: 1.2;
+    }
+    .char {
+      font-size: 2rem;
+      margin-right: .5rem;
+    }
+    .latin {
+      color: #58a6ff;
+      font-weight: bold;
+    }
+    .error {
+      color: #ff8c8c;
+      background: rgba(255,0,0,0.1);
+      border-radius: 8px;
+      padding: .6rem;
+      margin-top: .8rem;
+    }
+    .final-text {
+      margin-top: 1.5rem;
+    }
+    label {
+      font-weight: bold;
+      color: #9aa6b2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Grade 1 Braille Converter</h1>
+    <p>Type dot numbers (1-6) separated by spaces. Each token becomes one Braille cell.  
+       <code> N </code> means the <code>N</code>th cell is filled in.
+       <br/> 
+       Example <code>125 24</code> → ⠓⠊ → <b>hi</b></p>
+
+    <input id="input" placeholder="Type something like 125 24" aria-label="Braille dot input" />
+
+    <div class="output" id="output">
+      <p> Braille Symbols </p>
+      <div class="braille-line" id="brailleLine" aria-live="polite"></div>
+      <div class="details" id="details"></div>
+      <div class="error" id="error" role="alert" aria-live="assertive" style="display:none;"></div>
+
+      <div class="final-text">
+        <label for="finalText">Full Text Result:</label>
+        <textarea id="finalText" readonly disabled placeholder="Translated text will appear here..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Braille alphabet mapping: dot pattern → Latin letter
+    const brailleMap = {
+      "1":"a","12":"b","14":"c","145":"d","15":"e","124":"f","1245":"g","125":"h","24":"i","245":"j",
+      "13":"k","123":"l","134":"m","1345":"n","135":"o","1234":"p","12345":"q","1235":"r","234":"s","2345":"t",
+      "136":"u","1236":"v","2456":"w","1346":"x","13456":"y","1356":"z"
+    };
+
+    let lastKeyWasSpace = false;
+
+    function tokenToBraille(token) {
+      const digits = Array.from(token.replace(/[^1-8]/g, '')).sort();
+      if (digits.length === 0) return null;
+      const dotKey = digits.join('');
+      let mask = 0;
+      for (const d of digits) mask |= (1 << (parseInt(d) - 1));
+      const char = String.fromCodePoint(0x2800 + mask);
+      const latin = brailleMap[dotKey] || null;
+      return { token, dots: dotKey, char, latin };
+    }
+
+    function updateOutput(showErrors = false) {
+      const input = document.getElementById('input').value.trim();
+      const tokens = input.split(/\s+/).filter(Boolean);
+      const results = tokens.map(tokenToBraille).filter(Boolean);
+
+      const brailleLine = document.getElementById('brailleLine');
+      const details = document.getElementById('details');
+      const errorEl = document.getElementById('error');
+      const finalTextEl = document.getElementById('finalText');
+
+      const validLetters = results.filter(r => r.latin).map(r => r.latin);
+      const translatedText = validLetters.join('');
+
+      // Update braille symbols
+      brailleLine.textContent = results.map(r => r.char).join(' ') || '';
+
+      // Update details panel
+      details.innerHTML = results.map(r =>
+        `<div class="token">
+          <div><span class="char">${r.char}</span></div>
+          <div><strong>Dots:</strong> ${r.dots}<br>
+          ${r.latin
+            ? `<strong>Letter:</strong> <span class="latin">${r.latin}</span>`
+            : showErrors ? `<strong style="color:#ff8c8c;">Invalid pattern</strong>` : ''}
+          </div>
+        </div>`
+      ).join('');
+
+      // Update final text output
+      finalTextEl.value = translatedText;
+
+      // Error handling
+      if (showErrors) {
+        const invalidTokens = results.filter(r => !r.latin);
+        if (invalidTokens.length > 0) {
+          errorEl.style.display = 'block';
+          errorEl.textContent = "Error: Unrecognized Braille patterns → " + invalidTokens.map(r => r.token).join(', ');
+        } else {
+          errorEl.style.display = 'none';
+          errorEl.textContent = '';
+        }
+      } else {
+        errorEl.style.display = 'none';
+        errorEl.textContent = '';
+      }
+
+      // Accessibility announcement
+      if (translatedText) {
+        brailleLine.setAttribute('aria-label', translatedText);
+      } else {
+        brailleLine.removeAttribute('aria-label');
+      }
+    }
+
+    const inputEl = document.getElementById('input');
+    inputEl.addEventListener('input', () => {
+      updateOutput(lastKeyWasSpace);
+      lastKeyWasSpace = false;
+    });
+
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        lastKeyWasSpace = true;
+      }
+    });
+
+    // Default example
+    inputEl.value = '125 24';
+    updateOutput();
+  </script>
+</body>
+</html>
